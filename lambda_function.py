@@ -5,8 +5,6 @@ from config import username, password, endpoint
 from datetime import datetime
 
 
-
-
 app = Flask(__name__)
 CORS(app)
 
@@ -20,6 +18,16 @@ class Post(db.Model):
     content = db.Column(db.Text, nullable=False)
     likes = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Comment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
+    author = db.Column(db.String(255), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    likes = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 # Wrap db.create_all in an application context
 with app.app_context():
@@ -85,18 +93,64 @@ def like_post(post_id):
     return jsonify({'likes': post.likes}), 200
 
 
-
 @app.route('/posts/<int:post_id>', methods=['DELETE'])
 def delete_post(post_id):
+    # First delete all comments associated with the post
+    Comment.query.filter_by(post_id=post_id).delete()
+
+    # Then delete the post
     post = Post.query.get_or_404(post_id)
     db.session.delete(post)
     db.session.commit()
     return jsonify({'message': 'Post deleted'}), 200
 
+# COMMENTS
+@app.route('/posts/<int:post_id>/comments', methods=['GET'])
+def get_comments(post_id):
+    comments = Comment.query.filter_by(post_id=post_id).all()
+    comments_data = [{
+        'id': comment.id,
+        'author': comment.author,
+        'content': comment.content,
+        'likes': comment.likes,
+        'created_at': comment.created_at.isoformat()
+    } for comment in comments]
+    return jsonify(comments_data), 200
 
+@app.route('/posts/<int:post_id>/comments', methods=['POST'])
+def create_comment(post_id):
+    data = request.json
+    new_comment = Comment(post_id=post_id, author=data['author'], content=data['content'])
+    db.session.add(new_comment)
+    db.session.commit()
+    return jsonify({
+        'id': new_comment.id, 
+        'author': new_comment.author,
+        'content': new_comment.content,
+        'likes': new_comment.likes,
+        'created_at': new_comment.created_at.isoformat()
+    }), 201
+
+
+@app.route('/comments/<int:comment_id>/like', methods=['POST'])
+def like_comment(comment_id):
+    comment = Comment.query.get_or_404(comment_id)
+    data = request.json
+    if data.get('like'):
+        comment.likes += 1
+    else:
+        comment.likes = max(comment.likes - 1, 0)
+    db.session.commit()
+    return jsonify({'likes': comment.likes}), 200
+
+@app.route('/comments/<int:comment_id>', methods=['DELETE'])
+def delete_comment(comment_id):
+    comment = Comment.query.get_or_404(comment_id)
+    db.session.delete(comment)
+    db.session.commit()
+    return jsonify({'message': 'Comment deleted'}), 200
 
 
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8012, use_reloader=False)
-
