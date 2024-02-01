@@ -3,6 +3,9 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from config import username, password, endpoint
 from datetime import datetime
+from functools import wraps
+from flask import request, jsonify
+import requests
 
 
 app = Flask(__name__)
@@ -32,6 +35,20 @@ class Comment(db.Model):
 # Wrap db.create_all in an application context
 with app.app_context():
     db.create_all()
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_cookie = request.cookies.get('pure-poker-token')
+        if auth_cookie:
+            # Send a request to the authentication service for validation
+            validation_response = requests.post('http://authentication_service_endpoint/validate_token', 
+                                                cookies={'pure-poker-token': auth_cookie})
+            if validation_response.status_code == 200:
+                return f(*args, **kwargs)
+        return jsonify({'message': 'Unauthorized'}), 401
+    return decorated_function
+
 
 
 # Health Check endpoint
