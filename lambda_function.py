@@ -13,7 +13,6 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 username = os.getenv('username')
 password = os.getenv('password')
 endpoint = os.getenv('endpoint')
