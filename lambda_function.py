@@ -180,6 +180,7 @@ def delete_comment(comment_id):
 
 
 def lambda_handler(event, context):
+    print("Here we go!")
     response = awsgi.response(app, event, context)
 
     # Check if the headers exist in the event and set the origin accordingly
