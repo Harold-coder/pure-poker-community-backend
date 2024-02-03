@@ -1,16 +1,22 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from config import username, password, endpoint
+# from config import username, password, endpoint
 from datetime import datetime
 from functools import wraps
 from flask import request, jsonify
+import awsgi
+import os
 import requests
 
 
 app = Flask(__name__)
 CORS(app)
 
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
+username = os.getenv('username')
+password = os.getenv('password')
+endpoint = os.getenv('endpoint')
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{username}:{password}@{endpoint}/pure_poker'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -169,5 +175,40 @@ def delete_comment(comment_id):
 
 
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8012, use_reloader=False)
+# if __name__ == '__main__':
+#     app.run(debug=True, host='0.0.0.0', port=8012, use_reloader=False)
+
+
+def lambda_handler(event, context):
+    response = awsgi.response(app, event, context)
+
+    # Check if the headers exist in the event and set the origin accordingly
+    headers = event.get('headers', {})
+    # origin = headers.get('origin') if headers else 'https://www.unilate.be'
+    origin = headers.get('origin')
+
+    # Prepare the response headers
+    response_headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Headers": "Content-Type,Authorization",
+        "Access-Control-Allow-Methods": "GET,PUT,POST,DELETE,OPTIONS"
+    }
+
+    # Construct the modified response
+    modified_response = {
+        "isBase64Encoded": False,
+        "statusCode": response['statusCode'],
+        "headers": response_headers,
+        "multiValueHeaders": response.get('multiValueHeaders', {}),
+        "body": response['body']
+    }
+
+    # Check if 'Set-Cookie' is in the Flask response headers and add it to the multiValueHeaders
+    flask_response_headers = response.get('headers', {})
+    if 'Set-Cookie' in flask_response_headers:
+        # AWS API Gateway expects the 'Set-Cookie' header to be in multiValueHeaders
+        modified_response['multiValueHeaders']['Set-Cookie'] = [flask_response_headers['Set-Cookie']]
+
+    return modified_response
