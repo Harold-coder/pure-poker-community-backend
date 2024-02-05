@@ -170,8 +170,8 @@ def lambda_handler(event, context):
 
     # Check if the headers exist in the event and set the origin accordingly
     headers = event.get('headers', {})
-    # origin = headers.get('origin') if headers else 'https://www.unilate.be'
-    origin = headers.get('origin')
+
+    origin = headers.get('origin') if headers else 'https://purepoker.world'
 
     # Prepare the response headers
     response_headers = {
