@@ -53,9 +53,9 @@ class Like(db.Model):
     comment_id = db.Column(db.Integer, db.ForeignKey('comment.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    user = db.relationship('Users', backref='likes')
-    post = db.relationship('Post', backref='likes')
-    comment = db.relationship('Comment', backref='likes')
+    # user = db.relationship('Users', backref='likes')
+    # post = db.relationship('Post', backref='likes')
+    # comment = db.relationship('Comment', backref='likes')
 
 
 
