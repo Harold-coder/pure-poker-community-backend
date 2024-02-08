@@ -7,7 +7,6 @@ from functools import wraps
 from flask import request, jsonify
 import awsgi
 import os
-import requests
 
 
 app = Flask(__name__)
@@ -36,6 +35,19 @@ class Comment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class Like(db.Model):
+    __tablename__ = 'likes'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=True)
+    comment_id = db.Column(db.Integer, db.ForeignKey('comment.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('Users', backref='likes')
+    post = db.relationship('Post', backref='likes')
+    comment = db.relationship('Comment', backref='likes')
+
+
 
 # Wrap db.create_all in an application context
 with app.app_context():
@@ -50,13 +62,20 @@ def health_check():
 @app.route('/posts', methods=['GET'])
 def get_posts():
     posts = Post.query.all()
-    posts_data = [{
-        'id': post.id,
-        'author': post.author,
-        'content': post.content,
-        'likes': post.likes,
-        'created_at': post.created_at.isoformat()
-    } for post in posts]
+    posts_data = []
+    
+    for post in posts:
+        # Count the likes for each post
+        likes_count = Like.query.filter_by(post_id=post.id).count()
+        
+        posts_data.append({
+            'id': post.id,
+            'author': post.author,
+            'content': post.content,
+            'likes': likes_count,  # Use the count of likes from the likes table
+            'created_at': post.created_at.isoformat()
+        })
+
     return jsonify(posts_data), 200
 
 @app.route('/posts', methods=['POST'])
@@ -70,35 +89,57 @@ def create_post():
 @app.route('/posts/<int:post_id>', methods=['GET'])
 def get_post(post_id):
     post = Post.query.get_or_404(post_id)
+    likes_count = Like.query.filter_by(post_id=post.id).count()  # Count likes for this post
+
     post_data = {
         'id': post.id,
         'author': post.author,
         'content': post.content,
-        'likes': post.likes,
-        'created_at': post.created_at.isoformat() 
+        'likes': likes_count,  # Use the likes count from the likes table
+        'created_at': post.created_at.isoformat()
     }
     return jsonify(post_data), 200
 
+
+#TODO: Implement this endpoint later and add to gateway if needed. 
 @app.route('/posts/<int:post_id>', methods=['PUT'])
 def update_post(post_id):
     post = Post.query.get_or_404(post_id)
     data = request.json
     post.likes = data.get('likes', post.likes)
     # Update other fields as needed
+    # Implement later, we don't need this endpoint rn
     db.session.commit()
     return jsonify({"message": "Post modified!"}), 200
 
 
 @app.route('/posts/<int:post_id>/like', methods=['POST'])
 def like_post(post_id):
+    # Placeholder for actual user ID retrieval logic
+    current_user_id = request.json.get('user_id')
     post = Post.query.get_or_404(post_id)
-    data = request.json
-    if data.get('like'):
-        post.likes += 1  # Increment the likes
+    
+    # Check if the like already exists
+    existing_like = Like.query.filter_by(user_id=current_user_id, post_id=post_id).first()
+    
+    if existing_like:
+        # If like exists, remove it (unlike)
+        db.session.delete(existing_like)
+        post.likes = max(post.likes - 1, 0)
+        action = 'unliked'
     else:
-        post.likes = max(post.likes - 1, 0)  # Decrement the likes, but don't go below 0
+        # If like does not exist, add a new like
+        new_like = Like(user_id=current_user_id, post_id=post_id)
+        db.session.add(new_like)
+        post.likes += 1
+        action = 'liked'
+    
+    # Commit changes to the database
     db.session.commit()
-    return jsonify({'likes': post.likes}), 200
+    
+    # Return the current like count for the post
+    like_count = Like.query.filter_by(post_id=post_id).count()
+    return jsonify({'status': action, 'likes': like_count}), 200
 
 
 @app.route('/posts/<int:post_id>', methods=['DELETE'])
@@ -112,17 +153,21 @@ def delete_post(post_id):
     db.session.commit()
     return jsonify({'message': 'Post deleted'}), 200
 
-# COMMENTS
+# --------------------------------------- COMMENTS ---------------------------------------
 @app.route('/posts/<int:post_id>/comments', methods=['GET'])
 def get_comments(post_id):
     comments = Comment.query.filter_by(post_id=post_id).all()
-    comments_data = [{
-        'id': comment.id,
-        'author': comment.author,
-        'content': comment.content,
-        'likes': comment.likes,
-        'created_at': comment.created_at.isoformat()
-    } for comment in comments]
+    comments_data = []
+    for comment in comments:
+        # Count the likes for each comment
+        likes_count = Like.query.filter_by(comment_id=comment.id).count()
+        comments_data.append({
+            'id': comment.id,
+            'author': comment.author,
+            'content': comment.content,
+            'likes': likes_count,  # Replace comment.likes with the count from likes table
+            'created_at': comment.created_at.isoformat()
+        })
     return jsonify(comments_data), 200
 
 @app.route('/posts/<int:post_id>/comments', methods=['POST'])
@@ -142,14 +187,31 @@ def create_comment(post_id):
 
 @app.route('/comments/<int:comment_id>/like', methods=['POST'])
 def like_comment(comment_id):
+    user_id = request.json.get('user_id')  # Assuming you pass the user ID in the request
+    like = Like.query.filter_by(comment_id=comment_id, user_id=user_id).first()
     comment = Comment.query.get_or_404(comment_id)
-    data = request.json
-    if data.get('like'):
-        comment.likes += 1
+
+    if request.json.get('like'):
+        # If the user wants to like but the like doesn't exist, create it
+        if not like:
+            new_like = Like(user_id=user_id, comment_id=comment_id)
+            db.session.add(new_like)
+            comment.likes += 1
+            message = 'Like added.'
+        else:
+            message = 'Like already exists.'
     else:
-        comment.likes = max(comment.likes - 1, 0)
+        # If the user wants to remove the like and it exists, delete it
+        if like:
+            db.session.delete(like)
+            comment.likes = max(comment.likes - 1, 0)
+            message = 'Like removed.'
+        else:
+            message = 'Like does not exist.'
+
     db.session.commit()
-    return jsonify({'likes': comment.likes}), 200
+    likes_count = Like.query.filter_by(comment_id=comment_id).count()  # Count current likes for the comment
+    return jsonify({'message': message, 'likes': likes_count}), 200
 
 @app.route('/comments/<int:comment_id>', methods=['DELETE'])
 def delete_comment(comment_id):
