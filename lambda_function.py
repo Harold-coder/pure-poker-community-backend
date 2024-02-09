@@ -25,6 +25,7 @@ class Post(db.Model):
     author = db.Column(db.String(255), nullable=False)
     content = db.Column(db.Text, nullable=False)
     likes = db.Column(db.Integer, default=0)
+    comments_count = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Comment(db.Model):
@@ -83,6 +84,7 @@ def get_posts():
             'author': post.author,
             'content': post.content,
             'likes': likes_count,  # Use the count of likes from the likes table
+            'comments_count' : post.comments_count,
             'created_at': post.created_at.isoformat()
         })
 
@@ -106,6 +108,7 @@ def get_post(post_id):
         'author': post.author,
         'content': post.content,
         'likes': likes_count,  # Use the likes count from the likes table
+        'comments_count' : post.comments_count,
         'created_at': post.created_at.isoformat()
     }
     return jsonify(post_data), 200
@@ -193,6 +196,10 @@ def create_comment(post_id):
     data = request.json
     new_comment = Comment(post_id=post_id, author=data['author'], content=data['content'])
     db.session.add(new_comment)
+
+    post = Post.query.get_or_404(post_id)
+    post.comments_count += 1
+
     db.session.commit()
     return jsonify({
         'id': new_comment.id, 
