@@ -152,6 +152,14 @@ def like_post(post_id):
     return jsonify({'status': action, 'likes': like_count}), 200
 
 
+@app.route('/posts/likes', methods=['GET'])
+def get_posts_likes():
+    current_user_id = request.json.get('user_id')  # Adjust according to how you authenticate users
+    likes = Like.query.filter_by(user_id=current_user_id).all()
+    liked_posts_ids = [like.post_id for like in likes if like.post_id]
+    return jsonify(liked_posts_ids), 200
+
+
 @app.route('/posts/<int:post_id>', methods=['DELETE'])
 def delete_post(post_id):
     # First delete all comments associated with the post
@@ -222,6 +230,14 @@ def like_comment(comment_id):
     db.session.commit()
     likes_count = Like.query.filter_by(comment_id=comment_id).count()  # Count current likes for the comment
     return jsonify({'message': message, 'likes': likes_count}), 200
+
+@app.route('/comments/likes', methods=['GET'])
+def get_comments_likes():
+    current_user_id = request.json.get('user_id')  # Ensure this ID is securely fetched based on the authenticated user
+    likes = Like.query.filter_by(user_id=current_user_id).all()
+    liked_comments_ids = [like.comment_id for like in likes if like.comment_id]
+    return jsonify(liked_comments_ids), 200
+
 
 @app.route('/comments/<int:comment_id>', methods=['DELETE'])
 def delete_comment(comment_id):
