@@ -231,7 +231,7 @@ def like_comment(comment_id):
     likes_count = Like.query.filter_by(comment_id=comment_id).count()  # Count current likes for the comment
     return jsonify({'message': message, 'likes': likes_count}), 200
 
-@app.route('/comments/likes', methods=['GET'])
+@app.route('/comments/likes', methods=['POST'])
 def get_comments_likes():
     current_user_id = request.json.get('user_id')  # Ensure this ID is securely fetched based on the authenticated user
     likes = Like.query.filter_by(user_id=current_user_id).all()
