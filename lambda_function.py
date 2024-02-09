@@ -152,7 +152,7 @@ def like_post(post_id):
     return jsonify({'status': action, 'likes': like_count}), 200
 
 
-@app.route('/posts/likes', methods=['GET'])
+@app.route('/posts/likes', methods=['POST'])
 def get_posts_likes():
     current_user_id = request.json.get('user_id')  # Adjust according to how you authenticate users
     likes = Like.query.filter_by(user_id=current_user_id).all()
