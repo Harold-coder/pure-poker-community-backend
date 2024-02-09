@@ -203,33 +203,37 @@ def create_comment(post_id):
     }), 201
 
 
+
 @app.route('/comments/<int:comment_id>/like', methods=['POST'])
 def like_comment(comment_id):
-    user_id = request.json.get('user_id')  # Assuming you pass the user ID in the request
-    like = Like.query.filter_by(comment_id=comment_id, user_id=user_id).first()
+    # Retrieve the user ID from the request's JSON body
+    current_user_id = request.json.get('user_id')
     comment = Comment.query.get_or_404(comment_id)
-
-    if request.json.get('like'):
-        # If the user wants to like but the like doesn't exist, create it
-        if not like:
-            new_like = Like(user_id=user_id, comment_id=comment_id)
-            db.session.add(new_like)
-            comment.likes += 1
-            message = 'Like added.'
-        else:
-            message = 'Like already exists.'
+    
+    # Check if the like already exists for this comment and user
+    existing_like = Like.query.filter_by(user_id=current_user_id, comment_id=comment_id).first()
+    
+    if existing_like:
+        # If a like exists, it means the user wants to unlike the comment
+        db.session.delete(existing_like)
+        comment.likes = max(comment.likes - 1, 0)
+        action = 'unliked'  # Indicate that the action performed was an unlike
     else:
-        # If the user wants to remove the like and it exists, delete it
-        if like:
-            db.session.delete(like)
-            comment.likes = max(comment.likes - 1, 0)
-            message = 'Like removed.'
-        else:
-            message = 'Like does not exist.'
-
+        # If no like exists, the user wants to like the comment
+        new_like = Like(user_id=current_user_id, comment_id=comment_id)
+        db.session.add(new_like)
+        comment.likes += 1
+        action = 'liked'  # Indicate that the action performed was a like
+    
+    # Commit the changes to the database
     db.session.commit()
-    likes_count = Like.query.filter_by(comment_id=comment_id).count()  # Count current likes for the comment
-    return jsonify({'message': message, 'likes': likes_count}), 200
+    
+    # Fetch the updated like count for this comment
+    like_count = Like.query.filter_by(comment_id=comment_id).count()
+    
+    # Return a response indicating the action performed and the current like count
+    return jsonify({'status': action, 'likes': like_count}), 200
+
 
 @app.route('/comments/likes', methods=['POST'])
 def get_comments_likes():
